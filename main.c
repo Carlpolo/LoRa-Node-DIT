@@ -8,21 +8,38 @@
  * Contributors:
  *    IBM Zurich Research Lab - initial API, implementation and documentation
  *******************************************************************************/
+#include "stdio.h"
+#include "stdlib.h"
 #include "board.h"
 #include "radio.h"
 #include "lmic.h"
 #include "debug.h"
 #include <string.h>
+#include <limits.h>
+#include "delay.h"
 
-#define MAX_COUNTER  50 /// max value for counter of edges
+#define MAX_COUNTER  20 /// max value for counter of edges
 
 extern void initsensor(osjobcb_t callback);
 extern u2_t readsensor(void);
 
 
+u1_t *received_data;
 u1_t on=1;
 u1_t counter=0;
 u1_t joined=0;
+u2_t rx=0;
+
+///////////////////////////////////////////////////////
+//List of commands
+
+char *cmd_turn_on_led1 = "Led1";
+char *cmd_turn_on_led2 = "Led2";
+char *cmd_Read_UART = "UART_ReadStatus";
+char *cmd_Write_UART = "UART_Write";
+
+/////////////////////////////////////////////////////
+const int max_int = INT_MAX;
 //u1_t const MAX_COUNTER = 50;
 // sensor functions
 
@@ -30,6 +47,7 @@ u1_t joined=0;
 // CONFIGURATION (FOR APPLICATION CALLBACKS BELOW)
 //////////////////////////////////////////////////
 
+					   
 
 // application router ID (LSBF)
 static  u1_t APPEUI[8]  = { 0x3F, 0x00, 0x00, 0x00, 0xAA, 0xAA, 0xDE, 0xDE };
@@ -38,9 +56,8 @@ static  u1_t APPEUI[8]  = { 0x3F, 0x00, 0x00, 0x00, 0xAA, 0xAA, 0xDE, 0xDE };
 static  u1_t DEVEUI[8]  = { 0x02, 0x00, 0x00, 0x3F, 0x00, 0x00, 0xD1, 0xC3 };
 
 // device-specific AES key (derived from device EUI)
-static  u1_t DEVKEY[16] = {	0xA8, 0xAA, 0xAA, 0x95, 0xAA, 0xAA, 0x7B, 0x69, 
-														0x57, 0x55, 0x55, 0x6A, 0x55, 0x55, 0x84, 0x96};
-
+static  u1_t DEVKEY[16] = {0xA8, 0xAA, 0xAA, 0x95, 0xAA, 0xAA, 0x7B, 0x69, 
+						   0x57, 0x55, 0x55, 0x6A, 0x55, 0x55, 0x84, 0x96};
 
 //////////////////////////////////////////////////
 // APPLICATION CALLBACKS
@@ -71,28 +88,25 @@ static void sensorfunc (osjob_t* j) {
 
 		// read sensor
     u2_t val = readsensor();
-    debug_val( "val = " , val);
+    //debug_val( "val = " , val);
 	
-		if (joined==1){
+		if (joined == 1){
 				counter++;
 				if (counter == MAX_COUNTER){
 					counter=0;							
-					//ledstatus=!ledstatus;
-					set_led(0,1); // red led on
-					set_led(1,3);// turn on green led (3)
-					LMIC.frame[0] = LMIC.snr;
-					LMIC_setTxData2(1, LMIC.frame, 1, 0);
-					//LMIC_setTxData2(1, LMIC.frame, 2, 0); // (port 1, 2 bytes, unconfirmed)
+					
+					LMIC.frame[0] = LMIC.rssi;
+					LMIC.frame[1] = LMIC.snr;
+					
+					//LMIC_setTxData2(1, received_data, sizeof(rx), 1); //send the rx data 
+					LMIC_setTxData2(1, LMIC.frame, 2, 0); // (port 1, 2 bytes, unconfirmed)
 				}
 				else{
-					set_led(1,1); // red led on
+					//set_led(1,1); // red led on
 					set_led(0,3);// turn off green led (3)
 				}
 			
 		}
-    // prepare and schedule data for transmission
-    //LMIC.frame[0] = val << 8;
-    //LMIC.frame[1] = val;
     
 }
 
@@ -116,17 +130,16 @@ static void initfunc (osjob_t* j) {
 
 // application entry point
 int main () {
+	
     osjob_t initjob;
 
     // initialize runtime env
     os_init();
     // initialize debug library
     debug_init();
-			
+		
     // setup initial job
     os_setCallback(&initjob, initfunc);
-		//LMIC_setTxData2(1, LMIC.frame, 1, 0);
-		//GpioWrite( &Led2, 1 );	
 		
     // execute scheduled jobs and events
     os_runloop();
@@ -146,8 +159,17 @@ static u1_t ledstate = 0;
 static void blinkfunc (osjob_t* j) {
     // toggle LED
     ledstate = !ledstate;
-    debug_led(ledstate);
-		
+		if (joined == 0)
+			{
+				
+				
+				
+				debug_led(ledstate);
+			}
+		else 
+			{
+				set_led(ledstate,2);
+			}
     // reschedule blink job
     os_setTimedCallback(j, os_getTime()+ms2osticks(100), blinkfunc);
 }
@@ -167,16 +189,19 @@ void onEvent (ev_t ev) {
       case EV_JOINING:
           // start blinking
           blinkfunc(&blinkjob);// orange led flashing
+					
           break;
           
       // network joined, session established
       case EV_JOINED:
           // cancel blink job
           os_clearCallback(&blinkjob);
+			
           // switch on orange LED 
           debug_led(1); 
+					
 					joined=1;
-					//LMIC.frame[0] = LMIC.snr;
+					
 					
           // (don't schedule any new actions)
           break;
@@ -185,33 +210,73 @@ void onEvent (ev_t ev) {
           
 			
 					if(TXRX_ACK) {
-						
-						set_led(1,2); //yellow led
-						
+						// it goes here! -- Carlos 2015-06-02
+						set_led(1,3);// turn on green led (3)
+					
 					}
 					if(LMIC.dataLen) { // data received in rx slot after tx
-							//set_led(1,3); //green led
-							// cancel blink job
-							os_clearCallback(&blinkjob);
-              debug_buf(LMIC.frame+LMIC.dataBeg, LMIC.dataLen);
-							//debug_led(1);
-						}
-					/*LMIC.frame[0] = LMIC.snr;
-					LMIC.frame[1] = LMIC.rssi;
-					LMIC_setTxData2(1, LMIC.frame, 2, 0);
-					//set_led(0,2);
-				  debug_val ("Frame: ", LMIC.frame[0]);
-						*/
-			case EV_RXCOMPLETE:
-					if(TXRX_ACK) {
-						set_led(0,2); //yellow led
-						//blinkfunc(&blinkjob,3); //green led flashing
-					}
 						
+						received_data = LMIC.frame+LMIC.dataBeg;
+						////////////////////////////////////////////////////////
+						/* Added by Carlos 2015-06-08 */
+						
+						if ( strstr(received_data, cmd_Write_UART) != NULL )
+							{
+								
+								//set_led(1,1);//turn on led1
+								//set_led(1,2);//turn on led2
+								rx = read_STATUS();
+								
+								if (rx == 1){
+									debug_output_LOW_LEVEL();
+								}
+								else{
+									debug_output_HIGH_LEVEL();
+								}
+								//debug_char(0);
+								hal_waitUntil(os_getTime()+ms2osticks(1000));
+							
+									
+							}
+						if ( strstr(received_data, cmd_Read_UART) != NULL )
+							{
+							
+							//set_led(1,1);//turn on led1
+							//set_led(1,2);//turn on led2
+								
+							rx = read_STATUS();	
+							
+							received_data = (u1_t *)&rx;
+							
+							LMIC_setTxData2(1, received_data, sizeof(rx), 1); //send the rx data 
+							
+						}
+						////////////////////////////////////////////////////////
+					
+						if ( strstr(received_data, cmd_turn_on_led1) != NULL  ) // if command received is "Led1"
+								{
+									set_led(1,1);//turn on led1
+									set_led(0,2);//turn off led2
+									LMIC_setTxData2(1, received_data, LMIC.dataLen, 1); //send back the received data 
+									
+								}
+						
+							if ( strstr(received_data, cmd_turn_on_led2) != NULL  ) // if command received is "Led2"
+								{
+									set_led(1,2);//turn on led2
+									set_led(0,1);//turn off led1
+									LMIC_setTxData2(1, received_data, LMIC.dataLen, 1); //send back the received data 
+									
+								}
+								
+						}
+					break;
+	
+			
 						
 			case EV_LINK_DEAD:
 					debug_str ("Link Dead");
 					//blinkfunc(&blinkjob,1);// red led flashing
-       
+					break;
     }
 }

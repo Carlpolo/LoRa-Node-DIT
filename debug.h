@@ -18,6 +18,19 @@ void set_led (u1_t val, u1_t n_led);
 // write character to USART
 void debug_char (u1_t c);
 
+////////////////////////////////////////////////////////////////
+/*Modified by Carlos 2015-06-08--Reads the RX line of the UART*/
+u2_t read_STATUS ();
+
+////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////
+/*Modified by Carlos 2015-06-09--Writes 0 in the UART*/
+
+void debug_output_HIGH_LEVEL();
+void debug_output_LOW_LEVEL();
+////////////////////////////////////////////////////////////////
+
 // write byte as two hex digits to USART
 void debug_hex (u1_t b);
 

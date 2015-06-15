@@ -19,12 +19,29 @@
 #define LED_PIN3       	1 //use GPIO PA1 (LED0 on IMST)
 #define LED_PIN4        8 //use GPIO PA8 (LED4 on IMST)
 
+/*#define INPUT_PORT			GPIOA
+#define INPUT_PIN				12 //button 1
+*/
+#define INPUT_PORT			GPIOB
+#define INPUT_PIN				14 //button 2
 
-
+#define OUTPUT_PORT			GPIOB
+#define OUTPUT_PIN			15
 
 #define USART_TX_PORT   GPIOA
 #define USART_TX_PIN    9
+/*///////////////////////////////////////////////////////////////
+Added by Carlos 2015-06-08 for the configuration of USART_RX */
+#define USART_RX_PORT   GPIOA
+#define USART_RX_PIN    10 
+////////////////////////////////////////////////////////////////
 #define GPIO_AF_USART1  0x07
+
+
+
+
+
+
 
 void debug_init () {
     // configure LED pin as output
@@ -33,18 +50,39 @@ void debug_init () {
 		hw_cfg_pin(LED_PORT, LED_PIN3, GPIOCFG_MODE_OUT | GPIOCFG_OSPEED_40MHz | GPIOCFG_OTYPE_PUPD | GPIOCFG_PUPD_PUP);
     hw_cfg_pin(LED_PORT, LED_PIN4, GPIOCFG_MODE_OUT | GPIOCFG_OSPEED_40MHz | GPIOCFG_OTYPE_PUPD | GPIOCFG_PUPD_PUP);
 		
+		//configure pin to use as Output -- Modified by Carlos 2015-06-11
+		hw_cfg_pin(OUTPUT_PORT, OUTPUT_PIN, GPIOCFG_MODE_OUT | GPIOCFG_OSPEED_40MHz | GPIOCFG_OTYPE_PUPD | GPIOCFG_PUPD_PUP);// pin for buzzer configured for output
+		////////////////////////////////////////////////////////////
+		//configure pin to use as Input -- Modified by Carlos 2015-06-15
+		hw_cfg_pin(INPUT_PORT, INPUT_PIN, GPIOCFG_MODE_INP | GPIOCFG_OSPEED_40MHz | GPIOCFG_OTYPE_OPEN);// pin for button2 configured for input
+		//hw_cfg_pin(INPUT_PORT, INPUT_PIN, GPIOCFG_MODE_INP | GPIOCFG_OSPEED_40MHz | GPIOCFG_OTYPE_PUPD | GPIOCFG_PUPD_PUP);// pin for button1 configured for imput
+		///////////////////////////////////////////////////////////////////////////
+		set_led(1,1); //to get the output for the relay 2015-06-15 Carlos
     debug_led(0);
 
     // configure USART1 (115200/8N1, tx-only)
     RCC->APB2ENR |= RCC_APB2ENR_USART1EN;
     hw_cfg_pin(USART_TX_PORT, USART_TX_PIN, GPIOCFG_MODE_ALT|GPIOCFG_OSPEED_40MHz|GPIOCFG_OTYPE_PUPD|GPIOCFG_PUPD_PUP|GPIO_AF_USART1);
+		//hw_cfg_pin(USART_RX_PORT, USART_RX_PIN, GPIOCFG_MODE_ALT|GPIOCFG_OSPEED_40MHz|GPIOCFG_OTYPE_PUPD|GPIOCFG_PUPD_PUP|GPIO_AF_USART1);//added by Carlos 2015-06-08, configures the USART_RX
     USART1->BRR = 277; // 115200
     USART1->CR1 = USART_CR1_UE | USART_CR1_TE; // usart+transmitter enable
-
+		//USART1->CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;//usart+transmitter+receiver enable -- Modified by Carlos 2015-06-08
     // print banner
-    debug_str("\r\n============== DEBUG STARTED ==============\r\n");
+    /*
+		Commented out by Carlos 2015-06-11
+		debug_str("\r\n============== DEBUG STARTED ==============\r\n");
+		*/
 }
-
+////////////modified by Carlos 2015-06-11
+void debug_output_HIGH_LEVEL(){
+	//hw_set_pin(OUTPUT_PORT, OUTPUT_PIN, 1);
+	hw_set_pin(LED_PORT, LED_PIN2, 1);
+}
+void debug_output_LOW_LEVEL(){
+	//hw_set_pin(OUTPUT_PORT, OUTPUT_PIN, 0);
+	hw_set_pin(LED_PORT, LED_PIN2, 0);
+}
+/////////////////////////////////////////
 /////////////////////////////////////////
 /*void led(u1_t val) 
 added by Carlos 2015-05-21 
@@ -58,18 +96,34 @@ void set_led(u1_t val,u1_t n_led) {
 		else LED_PIN=LED_PIN4;
     hw_set_pin(LED_PORT, LED_PIN, val);
 }
-////////////////////////////////////
 
+////////////////////////////////////////////////////////////////
+/*Modified by Carlos 2015-06-15--Reads the INPUT GPIO*/
 
+u2_t read_STATUS (){
+	 /*if ((GPIOB->IDR & (1 << INPUT_PIN)) != 0)
+	//if ((GPIOB->IDR & INPUT_PIN) != 0)
+		 return 1;
+	 else
+		 return 0;
+	 */
+	 return ((GPIOB->IDR & (1 << INPUT_PIN)) != 0);
+	
+}
 
+////////////////////////////////////////////////////////////////
 void debug_led (u1_t val) {
     hw_set_pin(LED_PORT, LED_PIN4, val);
 }
 
 void debug_char (u1_t c) {
-    while( !(USART1->SR & USART_SR_TXE) );    
-    USART1->DR = c;
+    while( !(USART1->SR & USART_SR_TXE) );  
+		//USART1->DR = c;
+    USART1->DR = c&0xff; //modified by Carlos 2015-06-11
+		
+		
 }
+
 
 void debug_hex (u1_t b) {
     debug_char("0123456789ABCDEF"[b>>4]);
